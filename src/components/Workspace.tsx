@@ -150,7 +150,7 @@ const Workspace: React.FC = () => {
                         <div className="w-6 h-6 bg-white rounded-md flex items-center justify-center">
                             <Code className="w-4 h-4 text-black" />
                         </div>
-                        <h1 className="font-bold text-lg tracking-tight">ClipChain</h1>
+                        <h1 className="font-bold text-lg tracking-tight">ChainCopy</h1>
                     </div>
                     <div className="flex gap-2">
                         {!isTauri && (

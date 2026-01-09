@@ -8,7 +8,7 @@ interface OnboardingModalProps {
 
 const steps = [
     {
-        title: "Welcome to ClipChain",
+        title: "Welcome to ChainCopy",
         description: "Your clipboard just got a brain. We don't just store what you copy; we remember how they relate to each other.",
         icon: <Sparkles className="w-12 h-12 text-white" />,
         color: "bg-zinc-900 border-white/10"
@@ -27,7 +27,7 @@ const steps = [
     },
     {
         title: "You're Ready!",
-        description: "ClipChain is running in the background. Data is saved locally to your device. Happy coding!",
+        description: "ChainCopy is running in the background. Data is saved locally to your device. Happy coding!",
         icon: <Zap className="w-12 h-12 text-white" />,
         color: "bg-zinc-900 border-white/10"
     }
