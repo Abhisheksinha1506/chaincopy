@@ -15,6 +15,7 @@ interface StoreState {
     addItem: (content: string, timestamp: number) => Promise<void>;
     deleteChain: (id: string) => Promise<void>;
     selectChain: (id: string) => void;
+    deselectChain: () => void;
     createNewChain: () => Promise<void>;
     searchQuery: string;
     setSearchQuery: (query: string) => void;
@@ -75,6 +76,18 @@ export const useStore = create<StoreState>((set, get) => {
         addItem: async (content: string, timestamp: number) => {
             console.log('Store: addItem called');
             const { chainManager, dbManager, searchQuery, chains, selectedChainId, internalClipboard } = get();
+
+            // Deduplication Check
+            // Prevents double-pasting (e.g., race condition between focus-listener and manual Cmd+V)
+            if (chains.length > 0 && chains[0].items.length > 0) {
+                const latestItem = chains[0].items[0];
+                const timeDiff = Math.abs(timestamp - latestItem.timestamp);
+
+                if (latestItem.content === content && timeDiff < 2000) {
+                    console.log('Store: Duplicate content detected within 2s, ignoring.');
+                    return;
+                }
+            }
 
             // Log state before
             console.log('Store: Current chains count:', chains.length);
@@ -149,6 +162,10 @@ export const useStore = create<StoreState>((set, get) => {
         selectChain: (id: string) => {
             console.log('Store: Selecting chain:', id);
             set({ selectedChainId: id });
+        },
+
+        deselectChain: () => {
+            set({ selectedChainId: null });
         },
 
         createNewChain: async () => {

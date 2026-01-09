@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check } from 'lucide-react';
+import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check, ArrowLeft } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import { ask } from '@tauri-apps/plugin-dialog';
 
@@ -142,9 +142,9 @@ const Workspace: React.FC = () => {
     }, []);
 
     return (
-        <div className="flex h-screen bg-black text-white overflow-hidden">
+        <div className="flex h-screen bg-black text-white overflow-hidden relative">
             {/* Sidebar */}
-            <div className="w-80 bg-black border-r border-white/10 flex flex-col">
+            <div className={`flex-col border-r border-white/10 bg-black transition-all ${selectedChainId ? 'hidden md:flex md:w-80' : 'flex w-full md:w-80'}`}>
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="w-6 h-6 bg-white rounded-md flex items-center justify-center">
@@ -241,12 +241,20 @@ const Workspace: React.FC = () => {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col bg-black">
+            <div className={`flex-1 flex-col bg-black ${selectedChainId ? 'flex w-full' : 'hidden md:flex'}`}>
                 {selectedChain ? (
                     <>
-                        <div className="p-6 border-b border-white/10 bg-black flex items-center justify-between">
+                        <div className="p-4 md:p-6 border-b border-white/10 bg-black flex items-center justify-between sticky top-0 z-20">
                             <div>
                                 <div className="flex items-center gap-2 mb-1">
+                                    <button
+                                        onClick={() => useStore.getState().deselectChain()}
+                                        className="md:hidden mr-1 p-1 -ml-2 text-zinc-400 hover:text-white"
+                                        title="Back to list"
+                                    >
+                                        <ArrowLeft className="w-5 h-5" />
+                                    </button>
+
                                     {isEditingTitle ? (
                                         <div className="flex items-center gap-2">
                                             <input
@@ -254,7 +262,7 @@ const Workspace: React.FC = () => {
                                                 value={tempTitle}
                                                 onChange={(e) => setTempTitle(e.target.value)}
                                                 onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
-                                                className="bg-zinc-900 text-2xl font-bold tracking-tight text-white px-2 py-1 rounded border border-white/20 focus:outline-none min-w-[300px]"
+                                                className="bg-zinc-900 text-lg md:text-2xl font-bold tracking-tight text-white px-2 py-1 rounded border border-white/20 focus:outline-none min-w-[200px] md:min-w-[300px]"
                                                 autoFocus
                                             />
                                             <button onClick={saveTitle} className="p-1 hover:bg-green-500/20 text-green-400 rounded">
@@ -266,24 +274,28 @@ const Workspace: React.FC = () => {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-2 group">
-                                            <h2 className="text-2xl font-bold tracking-tight">{selectedChain.title}</h2>
+                                            <h2 className="text-lg md:text-2xl font-bold tracking-tight truncate max-w-[200px] md:max-w-md">{selectedChain.title}</h2>
                                             <button
                                                 onClick={startEditing}
-                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 text-zinc-500 hover:text-white rounded transition-all"
+                                                className="opacity-100 md:opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 text-zinc-500 hover:text-white rounded transition-all"
                                                 title="Rename Chain"
                                             >
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
                                         </div>
                                     )}
-                                    {selectedChain.tags.map(tag => (
-                                        <span key={tag} className="px-2 py-0.5 rounded-full bg-zinc-900 text-[10px] font-bold uppercase text-zinc-500">
-                                            {tag}
-                                        </span>
-                                    ))}
+                                    <div className="hidden md:flex gap-1">
+                                        {selectedChain.tags.map(tag => (
+                                            <span key={tag} className="px-2 py-0.5 rounded-full bg-zinc-900 text-[10px] font-bold uppercase text-zinc-500">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                                <p className="text-sm text-zinc-500">
-                                    Created {new Date(selectedChain.createdAt).toLocaleString()} • {selectedChain.items.length} items
+                                <p className="text-xs md:text-sm text-zinc-500 flex gap-2">
+                                    <span>{new Date(selectedChain.createdAt).toLocaleString()}</span>
+                                    <span>•</span>
+                                    <span>{selectedChain.items.length} items</span>
                                 </p>
                             </div>
                             <div className="flex gap-2">
@@ -295,7 +307,7 @@ const Workspace: React.FC = () => {
                                         }`}
                                 >
                                     {copiedId === 'all' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                    <span>{copiedId === 'all' ? 'Copied All!' : 'Copy All'}</span>
+                                    <span className="hidden md:inline">{copiedId === 'all' ? 'Copied!' : 'Copy All'}</span>
                                 </button>
                                 <button
                                     onClick={() => handleDelete(selectedChain.id)}
@@ -306,74 +318,76 @@ const Workspace: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
-                            {selectedChain.items.length > 0 ? (
-                                <>
-                                    <div className="relative space-y-8">
-                                        {/* Visual Connection Line */}
-                                        <div className="absolute left-6 top-8 bottom-8 w-[2px] bg-gradient-to-b from-white/20 via-zinc-800 to-black" />
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full">
+                            <div className="max-w-5xl mx-auto w-full">
+                                {selectedChain.items.length > 0 ? (
+                                    <>
+                                        <div className="relative space-y-8">
+                                            {/* Visual Connection Line */}
+                                            <div className="absolute left-6 top-8 bottom-8 w-[2px] bg-gradient-to-b from-white/20 via-zinc-800 to-black" />
 
-                                        {selectedChain.items.map((item, index) => (
-                                            <div key={item.id} className="relative pl-14 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${Math.min(index * 50, 600)}ms` }}>
-                                                {/* Node Circle */}
-                                                <div className={`absolute left-4 top-4 w-4 h-4 rounded-full border-2 bg-black z-10 ${index === 0 ? 'border-white shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'border-zinc-700'
-                                                    }`} />
+                                            {selectedChain.items.map((item, index) => (
+                                                <div key={item.id} className="relative pl-12 md:pl-14 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${Math.min(index * 50, 600)}ms` }}>
+                                                    {/* Node Circle */}
+                                                    <div className={`absolute left-4 top-4 w-4 h-4 rounded-full border-2 bg-black z-10 ${index === 0 ? 'border-white shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'border-zinc-700'
+                                                        }`} />
 
-                                                <div className="group relative">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                            Step {selectedChain.items.length - index}
-                                                            <span className="w-1 h-1 rounded-full bg-zinc-800" />
-                                                            {new Date(item.timestamp).toLocaleTimeString()}
-                                                        </span>
-                                                        <div className="flex gap-1">
-                                                            <button
-                                                                onClick={() => handleCopyItem(item.content, item.id)}
-                                                                className={`p-1 rounded transition-all ${copiedId === item.id
-                                                                    ? 'bg-green-500/20 text-green-400 opacity-100'
-                                                                    : 'opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-400 hover:text-white'
-                                                                    }`}
-                                                                title="Copy item"
-                                                            >
-                                                                {copiedId === item.id ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => deleteItem(selectedChain.id, item.id)}
-                                                                className="p-1 rounded transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 hover:text-red-400"
-                                                                title="Delete item"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
+                                                    <div className="group relative">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                                Step {selectedChain.items.length - index}
+                                                                <span className="w-1 h-1 rounded-full bg-zinc-800 hidden md:block" />
+                                                                <span className="hidden md:inline">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                                                            </span>
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={() => handleCopyItem(item.content, item.id)}
+                                                                    className={`p-1 rounded transition-all ${copiedId === item.id
+                                                                        ? 'bg-green-500/20 text-green-400 opacity-100'
+                                                                        : 'opacity-100 md:opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                                        }`}
+                                                                    title="Copy item"
+                                                                >
+                                                                    {copiedId === item.id ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => deleteItem(selectedChain.id, item.id)}
+                                                                    className="p-1 rounded transition-all opacity-100 md:opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 hover:text-red-400"
+                                                                    title="Delete item"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div
+                                                            className="cursor-pointer active:scale-[0.99] transition-transform"
+                                                            onClick={() => handleCopyItem(item.content, item.id)}
+                                                        >
+                                                            <CodeBlock content={item.content} type={item.type} />
                                                         </div>
                                                     </div>
-                                                    <div
-                                                        className="cursor-pointer active:scale-[0.99] transition-transform"
-                                                        onClick={() => handleCopyItem(item.content, item.id)}
-                                                    >
-                                                        <CodeBlock content={item.content} type={item.type} />
-                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
 
-                                    <div className="mt-12 text-center">
-                                        <p className="text-xs text-zinc-600 italic">
-                                            Tap any item to copy it back to your clipboard
+                                        <div className="mt-12 text-center pb-8">
+                                            <p className="text-xs text-zinc-600 italic">
+                                                Tap any item to copy it back to your clipboard
+                                            </p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-[50vh] text-zinc-500 p-12 text-center">
+                                        <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-4 border border-white/10">
+                                            <Plus className="w-8 h-8 text-zinc-600" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-zinc-300 mb-2">Empty Chain</h3>
+                                        <p className="max-w-xs text-sm">
+                                            Copy some text from anywhere to add it to this chain.
                                         </p>
                                     </div>
-                                </>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-zinc-500 p-12 text-center">
-                                    <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-4 border border-white/10">
-                                        <Plus className="w-8 h-8 text-zinc-600" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-zinc-300 mb-2">Empty Chain</h3>
-                                    <p className="max-w-xs text-sm">
-                                        Copy some text from anywhere to add it to this chain.
-                                    </p>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </>
                 ) : (
