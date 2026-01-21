@@ -3,10 +3,12 @@ import { listen } from "@tauri-apps/api/event";
 import { useStore } from "./hooks/useStore";
 import Workspace from "./components/Workspace";
 import OnboardingModal from "./components/OnboardingModal";
+import AuthModal from "./components/AuthModal";
 
 function App() {
   const { init, addItem } = useStore();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     init();
@@ -19,20 +21,15 @@ function App() {
 
     const isTauri = !!(window as any).__TAURI_INTERNALS__;
     let unlisten: Promise<() => void> | null = null;
-    let lastClipboardContent = '';
 
     const syncBrowserClipboard = async () => {
       if (!isTauri && document.hasFocus()) {
         try {
-          // In some browsers, this may trigger a "Allow Paste" popup
           const text = await navigator.clipboard.readText();
-          if (text && text.trim().length > 0 && text !== lastClipboardContent) {
-            // Only add if it's different from the last captured content
-            lastClipboardContent = text;
+          if (text && text.trim().length > 0) {
             addItem(text, Date.now());
           }
         } catch (e) {
-          // This usually means the user hasn't granted paste permission yet
           console.log('App: Browser clipboard sync pending permission or empty.');
         }
       }
@@ -40,12 +37,8 @@ function App() {
 
     if (isTauri) {
       unlisten = listen<{ content: string, timestamp: number }>('clipboard-update', (event) => {
-        console.log('Clipboard update detected:', event.payload);
         const text = event.payload.content;
-
-        // Prevent duplicate entries if the content hasn't changed
-        if (text && text !== lastClipboardContent) {
-          lastClipboardContent = text;
+        if (text) {
           addItem(text, event.payload.timestamp);
         }
       });
@@ -68,8 +61,12 @@ function App() {
 
   return (
     <>
-      <Workspace />
+      <Workspace
+        onOpenAuth={() => setShowAuthModal(true)}
+        onOpenHelp={() => setShowOnboarding(true)}
+      />
       <OnboardingModal isOpen={showOnboarding} onClose={closeOnboarding} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </>
   );
 }

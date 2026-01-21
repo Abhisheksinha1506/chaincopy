@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check, ArrowLeft } from 'lucide-react';
+import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check, ArrowLeft, LogOut, HelpCircle, Download, ShieldCheck, Zap } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import { ask } from '@tauri-apps/plugin-dialog';
+import { FixedSizeList as List } from 'react-window';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
-const Workspace: React.FC = () => {
+interface WorkspaceProps {
+    onOpenAuth: () => void;
+    onOpenHelp: () => void;
+}
+
+const Workspace: React.FC<WorkspaceProps> = ({ onOpenAuth, onOpenHelp }) => {
     const {
         chains,
         filteredChains,
@@ -18,13 +25,22 @@ const Workspace: React.FC = () => {
         clearAllData,
         copyAll,
         copyItem,
-        createNewChain
+        createNewChain,
+        exportChain,
+        user,
+        signOut,
+        plan,
+        setPlan,
+        warning,
+        setWarning
     } = useStore();
 
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [showExportMenu, setShowExportMenu] = useState(false);
     const [isPendingNew, setIsPendingNew] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [tempTitle, setTempTitle] = useState('');
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
     const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
     // Ensure we have a selected chain if none is selected but chains exist
@@ -109,48 +125,72 @@ const Workspace: React.FC = () => {
         }
     };
 
-    // Handle manual paste (Cmd+V / Ctrl+V)
+
+    // Handle manual keyboard shortcuts (Cmd+C / Cmd+V)
     React.useEffect(() => {
-        const handlePaste = async (e: KeyboardEvent) => {
-            // Check for Cmd+V or Ctrl+V
-            if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
-                // Ignore if user is typing in an input field
-                const activeTag = document.activeElement?.tagName.toLowerCase();
-                if (activeTag === 'input' || activeTag === 'textarea') {
-                    return;
-                }
+        const handleKeyDown = async (e: KeyboardEvent) => {
+            const isMod = e.metaKey || e.ctrlKey;
+            const activeTag = document.activeElement?.tagName.toLowerCase();
+            const isTyping = activeTag === 'input' || activeTag === 'textarea';
+
+            // --- MANUAL PASTE (Cmd/Ctrl + V) ---
+            if (isMod && e.key === 'v') {
+                if (isTyping) return; // Allow native paste in inputs
 
                 e.preventDefault();
                 try {
                     const text = await navigator.clipboard.readText();
                     if (text) {
-                        console.log('Workspace: Manual paste detected');
-                        // Force add item, bypassing duplicate check in App.tsx (since this is explicit user action)
+                        console.log('Workspace: Manual paste detected via shortcut');
                         await useStore.getState().addItem(text, Date.now());
-
-                        // Visual feedback (optional but nice)
-                        // logic to flash or scroll to bottom could go here
                     }
                 } catch (err) {
-                    console.error('Workspace: Failed to read clipboard on paste', err);
+                    console.error('Workspace: Failed to read clipboard on shortcut', err);
                 }
+            }
+
+            // --- MANUAL COPY (Cmd/Ctrl + C) ---
+            // If user presses copy and hasn't highlighted any text, copy the latest item
+            if (isMod && e.key === 'c') {
+                if (isTyping) return; // Allow native copy in inputs
+
+                const selection = window.getSelection()?.toString();
+                if (!selection && selectedChain && selectedChain.items.length > 0) {
+                    e.preventDefault();
+                    const latestItem = selectedChain.items[0];
+                    console.log('Workspace: Manual copy detected via shortcut (no selection)');
+                    await handleCopyItem(latestItem.content, latestItem.id);
+                }
+            }
+
+            // --- FOCUS SEARCH (Cmd/Ctrl + K) ---
+            if (isMod && e.key === 'k') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
             }
         };
 
-        window.addEventListener('keydown', handlePaste);
-        return () => window.removeEventListener('keydown', handlePaste);
-    }, []);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedChain, selectedChainId]);
 
     return (
         <div className="flex h-screen bg-black text-white overflow-hidden relative">
             {/* Sidebar */}
             <div className={`flex-col border-r border-white/10 bg-black transition-all ${selectedChainId ? 'hidden md:flex md:w-80' : 'flex w-full md:w-80'}`}>
-                <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-white rounded-md flex items-center justify-center">
-                            <Code className="w-4 h-4 text-black" />
+                <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/40 backdrop-blur-xl sticky top-0 z-20">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-white to-zinc-500 flex items-center justify-center shadow-lg shadow-white/10 cursor-pointer" onClick={() => setPlan(plan === 'free' ? 'pro' : 'free')}>
+                            {plan === 'pro' ? <ShieldCheck className="w-4 h-4 text-black" /> : <Library className="w-4 h-4 text-black" />}
                         </div>
-                        <h1 className="font-bold text-lg tracking-tight">ChainCopy</h1>
+                        <div>
+                            <h1 className="text-sm font-black tracking-tighter text-white">CLIPCHAIN</h1>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm tracking-wider uppercase transition-colors ${plan === 'pro' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                                    {plan}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex gap-2">
                         {!isTauri && (
@@ -173,6 +213,13 @@ const Workspace: React.FC = () => {
                             <Plus className={`w-4 h-4 ${isPendingNew ? 'scale-110' : ''}`} />
                         </button>
                         <button
+                            onClick={onOpenHelp}
+                            className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-zinc-400 hover:text-white"
+                            title="Help & Tutorial"
+                        >
+                            <HelpCircle className="w-4 h-4" />
+                        </button>
+                        <button
                             onClick={handleClearAll}
                             className="p-1.5 hover:bg-red-500/10 hover:text-red-400 rounded-md transition-colors text-zinc-400"
                             title="Clear All Data"
@@ -186,8 +233,9 @@ const Workspace: React.FC = () => {
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
                         <input
+                            ref={searchInputRef}
                             type="text"
-                            placeholder="Search chains..."
+                            placeholder="Search chains... (⌘K)"
                             className="w-full bg-zinc-900 border border-transparent rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-white/20 transition-colors text-zinc-300 placeholder-zinc-600"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -195,53 +243,153 @@ const Workspace: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+                <div className="flex-1 px-2 pb-4 flex flex-col min-h-0">
                     <div className="px-3 mb-2 flex justify-between items-center">
                         <h2 className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">
                             {searchQuery ? 'Search Results' : 'Recent Chains'}
                         </h2>
                     </div>
-                    {filteredChains.map((chain) => (
-                        <button
-                            key={chain.id}
-                            onClick={() => selectChain(chain.id)}
-                            className={`w-full text-left px-3 py-3 rounded-lg flex items-start gap-3 transition-all ${selectedChainId === chain.id
-                                ? 'bg-white/10 text-white'
-                                : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200'
-                                }`}
-                        >
-                            <div className={`mt-0.5 p-1.5 rounded-md ${selectedChainId === chain.id ? 'bg-white/20' : 'bg-zinc-900'
-                                }`}>
-                                {chain.items[0]?.type === 'code' ? <Code className="w-3.5 h-3.5" /> :
-                                    chain.tags.includes('bug') ? <Bug className="w-3.5 h-3.5" /> :
-                                        <FileText className="w-3.5 h-3.5" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-start mb-0.5">
-                                    <h3 className="font-medium text-sm truncate leading-tight">{chain.title}</h3>
-                                    <span className="text-[10px] text-zinc-600 shrink-0">
-                                        {new Date(chain.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                </div>
-                                <p className="text-xs opacity-60 truncate">{chain.items[0]?.preview}</p>
-                            </div>
-                        </button>
-                    ))}
-                    {filteredChains.length === 0 && (
+
+                    {filteredChains.length > 0 ? (
+                        <div className="flex-1 min-h-0">
+                            <AutoSizer renderProp={({ height, width }) => (
+                                <List
+                                    height={height || 0}
+                                    itemCount={filteredChains.length}
+                                    itemSize={80} // Approx size of each chain button
+                                    width={width || 0}
+                                    className="space-y-1"
+                                >
+                                    {({ index, style }: { index: number, style: React.CSSProperties }) => {
+                                        const chain = filteredChains[index];
+                                        return (
+                                            <div style={style} className="px-1">
+                                                <button
+                                                    key={chain.id}
+                                                    onClick={() => selectChain(chain.id)}
+                                                    className={`w-full text-left px-3 py-3 rounded-lg flex items-start gap-3 transition-all ${selectedChainId === chain.id
+                                                        ? 'bg-white/10 text-white'
+                                                        : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200'
+                                                        }`}
+                                                >
+                                                    <div className={`mt-0.5 p-1.5 rounded-md ${selectedChainId === chain.id ? 'bg-white/20' : 'bg-zinc-900'
+                                                        }`}>
+                                                        {chain.items[0]?.type === 'code' ? <Code className="w-3.5 h-3.5" /> :
+                                                            chain.tags.includes('bug') ? <Bug className="w-3.5 h-3.5" /> :
+                                                                <FileText className="w-3.5 h-3.5" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex justify-between items-start mb-0.5">
+                                                            <h3 className="font-medium text-sm truncate leading-tight">{chain.title}</h3>
+                                                            <span className="text-[10px] text-zinc-600 shrink-0">
+                                                                {new Date(chain.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs opacity-60 truncate">{chain.items[0]?.preview}</p>
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        );
+                                    }}
+                                </List>
+                            )} />
+                        </div>
+                    ) : (
                         <div className="px-3 py-8 text-center text-xs text-zinc-700">
                             No{searchQuery ? ' results' : ' chains'} found
                         </div>
                     )}
                 </div>
 
-                <div className="p-4 border-t border-white/10 text-[10px] text-zinc-600 flex justify-between tracking-wide">
-                    <span>{chains.length} Chains recorded</span>
-                    <span>v1.0.0</span>
+                <div className="p-4 border-t border-white/10 flex flex-col gap-3">
+                    {/* Plan Toggle - Only visible when logged in */}
+                    {user && (
+                        <button
+                            onClick={() => setPlan(plan === 'free' ? 'pro' : 'free')}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${plan === 'pro'
+                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20'
+                                : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:border-white/20'
+                                }`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${plan === 'pro' ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
+                                    <Zap className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white leading-tight">
+                                        {plan === 'pro' ? 'Pro Plan' : 'Free Plan'}
+                                    </span>
+                                    <span className="text-[10px] opacity-60">Switch tier</span>
+                                </div>
+                            </div>
+                            {plan === 'free' && <Plus className="w-3.5 h-3.5 opacity-40" />}
+                        </button>
+                    )}
+
+                    {user ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="p-2 rounded-xl bg-green-500/5 border border-green-500/10">
+                                <div className="flex items-center justify-between gap-3 min-w-0">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-400 flex items-center justify-center shrink-0">
+                                            <CheckCircle2 className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-xs font-bold text-white truncate">Cloud Synced</span>
+                                            <span className="text-[10px] text-zinc-500 truncate">{user.email}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={signOut}
+                                        className="p-2 hover:bg-red-500/10 rounded-lg text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                                        title="Log Out"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={onOpenAuth}
+                            className="flex items-center justify-between group w-full p-2 rounded-xl bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-all text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-white/5 text-zinc-500 group-hover:text-white flex items-center justify-center transition-colors">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-xs font-bold text-white truncate">Sync to Cloud</span>
+                                    <span className="text-[10px] text-zinc-500 truncate">Login or Sign Up</span>
+                                </div>
+                            </div>
+                            <Plus className="w-4 h-4 text-zinc-600 transition-transform group-hover:rotate-45" />
+                        </button>
+                    )}
+                    <div className="text-[10px] text-zinc-600 flex justify-between tracking-wide px-1">
+                        <span>{chains.length} Chains recorded</span>
+                        <span>v1.0.0</span>
+                    </div>
                 </div>
             </div>
 
             {/* Main Content Area */}
-            <div className={`flex-1 flex-col bg-black ${selectedChainId ? 'flex w-full' : 'hidden md:flex'}`}>
+            <div className={`flex-1 flex flex-col min-w-0 bg-black relative ${selectedChainId ? 'flex w-full' : 'hidden md:flex'}`}>
+                {/* Tier Warning Banner */}
+                {warning && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] w-max max-w-md animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/20">
+                            <Zap className="w-5 h-5 text-indigo-200" />
+                            <span className="text-sm font-medium">{warning}</span>
+                            <button
+                                onClick={() => setWarning(null)}
+                                className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {selectedChain ? (
                     <>
                         <div className="p-4 md:p-6 border-b border-white/10 bg-black flex items-center justify-between sticky top-0 z-20">
@@ -309,6 +457,40 @@ const Workspace: React.FC = () => {
                                     {copiedId === 'all' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                                     <span className="hidden md:inline">{copiedId === 'all' ? 'Copied!' : 'Copy All'}</span>
                                 </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowExportMenu(!showExportMenu)}
+                                        className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 rounded-lg transition-all"
+                                        title="Export Chain"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
+                                    {showExportMenu && (
+                                        <div className="absolute right-0 mt-2 w-40 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                            <button
+                                                onClick={() => { exportChain(selectedChain.id, 'md'); setShowExportMenu(false); }}
+                                                className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-white/10 transition-colors flex items-center gap-2"
+                                            >
+                                                <FileText className="w-3.5 h-3.5 text-zinc-500" />
+                                                Markdown (.md)
+                                            </button>
+                                            <button
+                                                onClick={() => { exportChain(selectedChain.id, 'json'); setShowExportMenu(false); }}
+                                                className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-white/10 transition-colors flex items-center gap-2 border-t border-white/5"
+                                            >
+                                                <Code className="w-3.5 h-3.5 text-zinc-500" />
+                                                JSON (.json)
+                                            </button>
+                                            <button
+                                                onClick={() => { exportChain(selectedChain.id, 'txt'); setShowExportMenu(false); }}
+                                                className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-white/10 transition-colors flex items-center gap-2 border-t border-white/5"
+                                            >
+                                                <FileText className="w-3.5 h-3.5 text-zinc-500" />
+                                                Plain Text (.txt)
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                                 <button
                                     onClick={() => handleDelete(selectedChain.id)}
                                     className="p-2 bg-zinc-900 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 rounded-lg transition-all border border-white/10 text-zinc-400"
@@ -318,7 +500,7 @@ const Workspace: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full pb-32">
                             <div className="max-w-5xl mx-auto w-full">
                                 {selectedChain.items.length > 0 ? (
                                     <>
@@ -383,7 +565,7 @@ const Workspace: React.FC = () => {
                                         </div>
                                         <h3 className="text-lg font-bold text-zinc-300 mb-2">Empty Chain</h3>
                                         <p className="max-w-xs text-sm">
-                                            Copy some text from anywhere to add it to this chain.
+                                            Copy some text from anywhere or use the input below to add it to this chain.
                                         </p>
                                     </div>
                                 )}
@@ -402,7 +584,7 @@ const Workspace: React.FC = () => {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

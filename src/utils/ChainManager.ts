@@ -4,13 +4,21 @@ export class ChainManager {
     private chains: Chain[] = [];
     private forceNewChain: boolean = false;
 
-    addItem(content: string, timestamp: number, selectedChainId?: string | null): Chain[] {
+    addItem(content: string, timestamp: number, selectedChainId?: string | null): { chains: Chain[], newItem: ClipItem } {
+        const MAX_CONTENT_SIZE = 5 * 1024 * 1024; // 5MB limit
+        let processedContent = content;
+
+        if (content.length > MAX_CONTENT_SIZE) {
+            console.warn(`ChainManager: Truncating large content (${content.length} chars)`);
+            processedContent = content.substring(0, MAX_CONTENT_SIZE) + "\n\n[Content truncated due to size limit]";
+        }
+
         const newItem: ClipItem = {
             id: Math.random().toString(36).substr(2, 9),
-            content,
+            content: processedContent,
             timestamp,
-            type: this.detectType(content),
-            preview: content.substring(0, 50),
+            type: this.detectType(processedContent),
+            preview: processedContent.substring(0, 50),
         };
 
         // If forceNewChain is true OR there are no chains, create a new one
@@ -64,10 +72,10 @@ export class ChainManager {
             }
         }
 
-        return this.chains;
+        return { chains: this.chains, newItem };
     }
 
-    addItems(contents: string[], timestamp: number, selectedChainId?: string | null): Chain[] {
+    addItems(contents: string[], timestamp: number, selectedChainId?: string | null): { chains: Chain[], newItems: ClipItem[] } {
         const newItems: ClipItem[] = contents.map(content => ({
             id: Math.random().toString(36).substr(2, 9),
             content,
@@ -121,7 +129,7 @@ export class ChainManager {
                 ];
             }
         }
-        return this.chains;
+        return { chains: this.chains, newItems };
     }
 
     startNewChain() {

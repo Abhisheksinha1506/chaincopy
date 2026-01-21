@@ -4,6 +4,7 @@ import { Chain } from '../types';
 export class DatabaseManager {
     private db: Database | null = null;
     private dbPath: string | null = null;
+    private persistTimeout: any = null;
 
     async init() {
         try {
@@ -65,7 +66,8 @@ export class DatabaseManager {
                     id TEXT PRIMARY KEY,
                     title TEXT,
                     createdAt INTEGER,
-                    tags TEXT DEFAULT '[]'
+                    tags TEXT DEFAULT '[]',
+                    userId TEXT DEFAULT 'local'
                 );
                 CREATE TABLE IF NOT EXISTS items (
                     id TEXT PRIMARY KEY,
@@ -74,11 +76,12 @@ export class DatabaseManager {
                     timestamp INTEGER,
                     type TEXT,
                     preview TEXT,
+                    userId TEXT DEFAULT 'local',
                     FOREIGN KEY(chainId) REFERENCES chains(id)
                 );
             `);
 
-            // Migration check
+            // Migration check: tags
             try {
                 this.db.run('SELECT tags FROM chains LIMIT 1');
             } catch (e) {
@@ -86,11 +89,30 @@ export class DatabaseManager {
                 this.db.run('ALTER TABLE chains ADD COLUMN tags TEXT DEFAULT "[]"');
             }
 
+            // Migration check: userId
+            try {
+                this.db.run('SELECT userId FROM chains LIMIT 1');
+            } catch (e) {
+                console.log('DatabaseManager: Migrating - adding userId column');
+                this.db.run('ALTER TABLE chains ADD COLUMN userId TEXT DEFAULT "local"');
+                this.db.run('ALTER TABLE items ADD COLUMN userId TEXT DEFAULT "local"');
+            }
+
             console.log('DatabaseManager: Initialization complete');
         } catch (error) {
             console.error('DatabaseManager: Failed to initialize:', error);
             throw error;
         }
+    }
+
+    private debouncePersist() {
+        if (this.persistTimeout) {
+            clearTimeout(this.persistTimeout);
+        }
+        this.persistTimeout = setTimeout(() => {
+            this.persist();
+            this.persistTimeout = null;
+        }, 1000); // 1-second debounce
     }
 
     private async persist() {
@@ -103,7 +125,6 @@ export class DatabaseManager {
                 const { writeFile } = await import('@tauri-apps/plugin-fs');
                 const data = this.db.export();
                 await writeFile(this.dbPath, data);
-                console.log('DatabaseManager: Persisted to disk');
             } catch (error) {
                 console.error('DatabaseManager: Failed to persist to disk:', error);
             }
@@ -111,7 +132,6 @@ export class DatabaseManager {
             // Browser mode: Save to localStorage
             try {
                 const data = this.db.export();
-                // Convert Uint8Array to base64 for string storage
                 let binary = '';
                 const len = data.byteLength;
                 for (let i = 0; i < len; i++) {
@@ -119,69 +139,92 @@ export class DatabaseManager {
                 }
                 const base64 = window.btoa(binary);
                 localStorage.setItem('clipchain_db_backup', base64);
-                console.log('DatabaseManager: Backed up to localStorage (will survive tab close)');
             } catch (error) {
                 console.error('DatabaseManager: Failed to backup to localStorage:', error);
             }
         }
     }
 
-    async saveChain(chain: Chain) {
+    async saveChain(chain: Chain, userId: string = 'local') {
         if (!this.db) return;
 
-        this.db.run('INSERT OR REPLACE INTO chains (id, title, createdAt, tags) VALUES (?, ?, ?, ?)', [
-            chain.id, chain.title, chain.createdAt, JSON.stringify(chain.tags)
+        this.db.run('INSERT OR REPLACE INTO chains (id, title, createdAt, tags, userId) VALUES (?, ?, ?, ?, ?)', [
+            chain.id, chain.title, chain.createdAt, JSON.stringify(chain.tags), userId
         ]);
 
         for (const item of chain.items) {
-            this.db.run('INSERT OR REPLACE INTO items (id, chainId, content, timestamp, type, preview) VALUES (?, ?, ?, ?, ?, ?)', [
-                item.id, chain.id, item.content, item.timestamp, item.type, item.preview
+            this.db.run('INSERT OR REPLACE INTO items (id, chainId, content, timestamp, type, preview, userId) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+                item.id, chain.id, item.content, item.timestamp, item.type, item.preview, userId
             ]);
         }
 
-        await this.persist();
+        this.debouncePersist();
     }
 
-    async deleteChain(chainId: string) {
+    async deleteChain(chainId: string, userId: string = 'local') {
         if (!this.db) return;
-        this.db.run('DELETE FROM items WHERE chainId = ?', [chainId]);
-        this.db.run('DELETE FROM chains WHERE id = ?', [chainId]);
-        await this.persist();
+        this.db.run('DELETE FROM items WHERE chainId = ? AND userId = ?', [chainId, userId]);
+        this.db.run('DELETE FROM chains WHERE id = ? AND userId = ?', [chainId, userId]);
+        this.debouncePersist();
     }
 
-    async clearAll() {
+    async deleteItem(chainId: string, itemId: string, userId: string = 'local') {
         if (!this.db) return;
-        this.db.run('DELETE FROM items');
-        this.db.run('DELETE FROM chains');
-        // Reset sequence logic if needed, but simple DELETE is fine for now
-        await this.persist();
+        this.db.run('DELETE FROM items WHERE id = ? AND chainId = ? AND userId = ?', [itemId, chainId, userId]);
+        this.debouncePersist();
     }
 
-    loadAllChains(): Chain[] {
+    async clearAll(userId: string = 'local') {
+        if (!this.db) return;
+        this.db.run('DELETE FROM items WHERE userId = ?', [userId]);
+        this.db.run('DELETE FROM chains WHERE userId = ?', [userId]);
+        this.debouncePersist();
+    }
+
+    async migrateUserId(oldId: string, newId: string) {
+        if (!this.db) return;
+        console.log(`DatabaseManager: Migrating data from ${oldId} to ${newId}`);
+        this.db.run('UPDATE chains SET userId = ? WHERE userId = ?', [newId, oldId]);
+        this.db.run('UPDATE items SET userId = ? WHERE userId = ?', [newId, oldId]);
+        this.debouncePersist();
+    }
+
+    loadAllChains(userId: string = 'local'): Chain[] {
         if (!this.db) return [];
 
-        const chainsResult = this.db.exec('SELECT * FROM chains ORDER BY createdAt DESC');
+        const chainsResult = this.db.exec(`SELECT * FROM chains WHERE userId = '${userId}' ORDER BY createdAt DESC`);
         if (chainsResult.length === 0) return [];
 
-        const chains: Chain[] = chainsResult[0].values.map((row: any) => ({
-            id: row[0],
-            title: row[1],
-            createdAt: row[2],
-            tags: JSON.parse(row[3] || '[]'),
-            items: []
-        }));
+        const chainsMap: Record<string, Chain> = {};
+        const chains: Chain[] = [];
 
-        for (const chain of chains) {
-            const itemsResult = this.db.exec(`SELECT * FROM items WHERE chainId = '${chain.id}' ORDER BY timestamp DESC`);
-            if (itemsResult.length > 0) {
-                chain.items = itemsResult[0].values.map((row: any) => ({
-                    id: row[0],
-                    content: row[2],
-                    timestamp: row[3],
-                    type: row[4],
-                    preview: row[5]
-                }));
-            }
+        chainsResult[0].values.forEach((row: any) => {
+            const chain: Chain = {
+                id: row[0],
+                title: row[1],
+                createdAt: row[2],
+                tags: JSON.parse(row[3] || '[]'),
+                items: []
+            };
+            chains.push(chain);
+            chainsMap[chain.id] = chain;
+        });
+
+        // Optimized loadAllChains: single query for all items
+        const itemsResult = this.db.exec(`SELECT * FROM items WHERE userId = '${userId}' ORDER BY timestamp DESC`);
+        if (itemsResult.length > 0) {
+            itemsResult[0].values.forEach((row: any) => {
+                const chainId = row[1];
+                if (chainsMap[chainId]) {
+                    chainsMap[chainId].items.push({
+                        id: row[0],
+                        content: row[2],
+                        timestamp: row[3],
+                        type: row[4],
+                        preview: row[5]
+                    });
+                }
+            });
         }
 
         return chains;
