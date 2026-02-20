@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check, ArrowLeft } from 'lucide-react';
+import { Search, Library, Bug, Code, FileText, Copy, Trash2, CheckCircle2, Plus, Edit2, X, Check, ArrowLeft, Linkedin, Mail } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import { ask } from '@tauri-apps/plugin-dialog';
 
@@ -26,6 +26,20 @@ const Workspace: React.FC = () => {
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [tempTitle, setTempTitle] = useState('');
     const isTauri = !!(window as any).__TAURI_INTERNALS__;
+
+    const handleOpenUrl = async (url: string) => {
+        if (isTauri) {
+            try {
+                const { openUrl } = await import('@tauri-apps/plugin-opener');
+                await openUrl(url);
+            } catch (e) {
+                console.error('Failed to open URL in Tauri', e);
+                window.open(url, '_blank');
+            }
+        } else {
+            window.open(url, '_blank');
+        }
+    };
 
     // Ensure we have a selected chain if none is selected but chains exist
     // Use filteredChains to ensure we respect search results
@@ -152,11 +166,28 @@ const Workspace: React.FC = () => {
                         </div>
                         <h1 className="font-bold text-lg tracking-tight">ChainCopy</h1>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-0.5">
+                        <button
+                            onClick={() => handleOpenUrl('https://www.linkedin.com/in/abhisheksinha1506/')}
+                            className="p-1 hover:bg-white/10 rounded-md transition-colors text-zinc-400 hover:text-[#0A66C2]"
+                            title="LinkedIn"
+                        >
+                            <Linkedin className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => handleOpenUrl('mailto:abhisheksinha1506@gmail.com')}
+                            className="p-1 hover:bg-white/10 rounded-md transition-colors text-zinc-400 hover:text-white"
+                            title="Email"
+                        >
+                            <Mail className="w-4 h-4" />
+                        </button>
+
+                        <div className="w-px h-4 bg-white/10 mx-0.5 self-center" />
+
                         {!isTauri && (
                             <button
                                 onClick={() => window.dispatchEvent(new Event('focus'))}
-                                className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-zinc-400 hover:text-white group"
+                                className="p-1 hover:bg-white/10 rounded-md transition-colors text-zinc-400 hover:text-white group"
                                 title="Sync Clipboard"
                             >
                                 <CheckCircle2 className="w-4 h-4 group-active:scale-90 transition-transform" />
@@ -164,7 +195,7 @@ const Workspace: React.FC = () => {
                         )}
                         <button
                             onClick={handleNewChain}
-                            className={`p-1.5 rounded-md transition-all ${isPendingNew
+                            className={`p-1 rounded-md transition-all ${isPendingNew
                                 ? 'bg-green-500/20 text-green-400'
                                 : 'hover:bg-white/10 text-zinc-400 hover:text-white'
                                 }`}
@@ -174,7 +205,7 @@ const Workspace: React.FC = () => {
                         </button>
                         <button
                             onClick={handleClearAll}
-                            className="p-1.5 hover:bg-red-500/10 hover:text-red-400 rounded-md transition-colors text-zinc-400"
+                            className="p-1 hover:bg-red-500/10 hover:text-red-400 rounded-md transition-colors text-zinc-400"
                             title="Clear All Data"
                         >
                             <Trash2 className="w-4 h-4" />
